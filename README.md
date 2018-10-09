@@ -1,2 +1,5 @@
-# Node-Component-Example-using-SpriteKit
-An example playground for creating generic node components in SpriteKit
+# Node Component Example using SpriteKit
+
+An example playground from [this post at simonfairbairn.com] about creating generic node components in SpriteKit.
+
+[1]: 
