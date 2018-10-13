@@ -171,7 +171,7 @@ class GameScene : SKScene {
         // 4.
         let positionComponent = PositionComponent(pos: point)
         let scaleComp = ScaleComponent()
-        // entity.addComponent(scaleComp)
+         entity.addComponent(scaleComp)
         // 5.
         entity.addComponent(nodeComponent)
         entity.addComponent(positionComponent)
