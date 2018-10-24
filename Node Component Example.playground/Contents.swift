@@ -130,6 +130,7 @@ class GameScene : SKScene {
         for system in systems {
             system.update(deltaTime: delta)
         }
+		self.previousTime = currentTime
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
