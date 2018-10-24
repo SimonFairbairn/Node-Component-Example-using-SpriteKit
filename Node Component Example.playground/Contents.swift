@@ -3,10 +3,43 @@ import SpriteKit
 import GameplayKit
 import PlaygroundSupport
 
-class NodeComponent : GKComponent {
-    let node = SKNode()
+class PhysicsComponent : GKComponent {
+	var body : SKPhysicsBody?
+	var position : CGPoint?
+	// 1.
+	init( body : SKPhysicsBody ) {
+		self.body = body
+		super.init()
+	}
+	required init?(coder aDecoder: NSCoder) {
+		fatalError("Not implemented")
+	}
+	// 2.
+	override func didAddToEntity() {
+		self.entity?.component(ofType: NodeComponent.self)?.node.physicsBody = self.body
+	}
+	// 3.
+	override func willRemoveFromEntity() {
+		if let hasNode = self.entity?.component(ofType: NodeComponent.self)?.node {
+			hasNode.physicsBody = nil
+			self.entity?.component(ofType: PositionComponent.self)?.currentPosition = hasNode.position
+		}
+		self.body = nil
+	}
 }
 
+class NodeComponent : GKComponent {
+	let node = TouchyNode()
+	override func didAddToEntity() {
+		// 1.
+		self.node.entity = self.entity
+		// 2.
+		self.node.isUserInteractionEnabled = true
+	}
+	override func willRemoveFromEntity() {
+		self.node.entity = nil
+	}
+}
 class PositionComponent : GKComponent {
     var currentPosition : CGPoint
     init(pos : CGPoint){
@@ -16,6 +49,10 @@ class PositionComponent : GKComponent {
     required init?(coder aDecoder: NSCoder) {
         fatalError("Not implemented")
     }
+
+	override func didAddToEntity() {
+		self.entity?.component(ofType: NodeComponent.self)?.node.position = self.currentPosition
+	}
 }
 
 class ScaleComponent : GKComponent {
@@ -42,10 +79,25 @@ class ScaleComponent : GKComponent {
 extension NodeComponent {
     // 2.
     override func update(deltaTime seconds: TimeInterval) {
-        // 3.
-        if let hasPos = self.entity?.component(ofType: PositionComponent.self)?.currentPosition {
-            self.node.position = hasPos
-        }
+        // 1.
+		if let physicsComponent = self.entity?.component(ofType: PhysicsComponent.self)  {
+			// 2.
+			guard let hasPhysicsPosition = physicsComponent.position else {
+				return
+			}
+
+			// 3.
+			let distance = CGVector(dx: hasPhysicsPosition.x - self.node.position.x, dy: hasPhysicsPosition.y - self.node.position.y)
+			let velocity = CGVector(dx: distance.dx / CGFloat(seconds), dy: distance.dy / CGFloat(seconds))
+			
+			// 4.
+			physicsComponent.body?.velocity = velocity
+		
+		} else {
+			if let hasPos = self.entity?.component(ofType: PositionComponent.self)?.currentPosition {
+				self.node.position = hasPos
+			}
+		}
     }
 }
 protocol ChildNode {
@@ -131,6 +183,14 @@ class GameScene : SKScene {
             system.update(deltaTime: delta)
         }
 		self.previousTime = currentTime
+		
+		// BONUS: If there are ten entities, let's completely stop the physics
+		// by removing the component.
+		if self.entities.count == 10 {
+			for entity in entities {
+				entity.removeComponent(ofType: PhysicsComponent.self)
+			}
+		}
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -148,9 +208,8 @@ class GameScene : SKScene {
     }
     
     func addNode(at point:CGPoint){
-        // 1.
+		self.physicsWorld.gravity = .zero
         let entity = GKEntity()
-        // 2.
         let nodeComponent = NodeComponent()
         
         if nodeTypes.isEmpty {
@@ -169,23 +228,68 @@ class GameScene : SKScene {
         if let typeComponent = typeComponent as? ChildNode {
             nodeComponent.node.addChild(typeComponent.asNode())
         }
-        // 4.
         let positionComponent = PositionComponent(pos: point)
         let scaleComp = ScaleComponent()
          entity.addComponent(scaleComp)
-        // 5.
         entity.addComponent(nodeComponent)
         entity.addComponent(positionComponent)
-        // 6.
         scaleComp.targetScale = 1.5
+
+if type != .label {
+		let body = SKPhysicsBody(rectangleOf: nodeComponent.node.calculateAccumulatedFrame().size)
+		let physics = PhysicsComponent(body: body)
+entity.addComponent(physics)
+}
+		
         self.entities.append(entity)
-        // 7.
         self.addChild(nodeComponent.node)
-        // 8.
         for system in systems {
             system.addComponent(foundIn: entity)
         }
     }
+
+override func didSimulatePhysics() {
+	guard let hasEntity = self.entities.first else {
+		return
+	}
+//	print("---PHYSICS APPLIED---")
+//	print( hasEntity.component(ofType: PositionComponent.self)?.currentPosition ?? "No position")
+//	print( hasEntity.component(ofType: NodeComponent.self)?.node.position ?? "No node")
+//	print( hasEntity.component(ofType: PhysicsComponent.self)?.body?.velocity ??  "No velocity")
+}
+}
+
+class TouchyNode : SKNode {
+	override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+		// 1.
+		guard let t = touches.first, let scene = self.scene else {
+			return
+		}
+		// 2.
+		self.entity?.component(ofType: PhysicsComponent.self)?.position = t.location(in: scene)
+		self.entity?.component(ofType: PositionComponent.self)?.currentPosition = t.location(in: scene)
+	}
+	override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+		guard let t = touches.first, let scene = self.scene  else {
+			return
+		}
+		self.entity?.component(ofType: PositionComponent.self)?.currentPosition = t.location(in: scene)
+		// 3.
+		if self.entity?.component(ofType: PhysicsComponent.self)?.position == nil {
+			return
+		}
+		self.entity?.component(ofType: PhysicsComponent.self)?.position = t.location(in: scene)
+		
+		
+	}
+	override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+		guard let t = touches.first, let scene = self.scene  else {
+			return
+		}
+		// 4.
+		self.entity?.component(ofType: PhysicsComponent.self)?.position = nil
+		self.entity?.component(ofType: PositionComponent.self)?.currentPosition = t.location(in: scene)
+	}
 }
 
 let view = SKView(frame: CGRect(x: 0, y: 0, width: 400, height: 500))
