@@ -50,9 +50,9 @@ class PositionComponent : GKComponent {
         fatalError("Not implemented")
     }
 
-	override func didAddToEntity() {
-		self.entity?.component(ofType: NodeComponent.self)?.node.position = self.currentPosition
-	}
+override func didAddToEntity() {
+	self.entity?.component(ofType: NodeComponent.self)?.node.position = self.currentPosition
+}
 }
 
 class ScaleComponent : GKComponent {
