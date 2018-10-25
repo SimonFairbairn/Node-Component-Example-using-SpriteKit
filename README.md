@@ -14,6 +14,5 @@ This repo is tagged to coincide the posts:
 
 
 [1]: http://simonfairbairn.com/generic-node-component-spritekit/
-[2]: 
-[3]: 
-[4]: http://simonfairbairn.com/
+[2]: http://simonfairbairn.com/?p=1851
+[3]: http://simonfairbairn.com/
