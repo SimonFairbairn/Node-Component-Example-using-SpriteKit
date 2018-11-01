@@ -3,6 +3,7 @@ import SpriteKit
 import GameplayKit
 import PlaygroundSupport
 
+// COMPONENTS
 class PhysicsComponent : GKComponent {
 	var body : SKPhysicsBody?
 	var position : CGPoint?
@@ -76,6 +77,79 @@ class ScaleComponent : GKComponent {
     }
 }
 
+class ContactComponent : GKComponent {
+	// 1.
+	var targetEntities : [GKEntity] = []
+	// 2.
+	func didMakeContact( with entity : GKEntity? ) {
+		guard let entity = entity else {
+			return
+		}
+		self.targetEntities.append(entity)
+	}
+}
+
+protocol ChildNode {
+	func asNode() -> SKNode
+}
+enum Shape {
+	case circle, square, floor
+}
+class ShapeComponent : GKComponent, ChildNode {
+	let shape : SKShapeNode
+	init( shape : Shape) {
+		switch shape {
+		case .circle:
+			self.shape = SKShapeNode(circleOfRadius: 20)
+			self.shape.fillColor = SKColor.purple
+		case .square:
+			self.shape = SKShapeNode(rectOf: CGSize(width: 50, height: 50))
+			self.shape.fillColor = SKColor.red
+		case .floor:
+			self.shape = SKShapeNode(rectOf: CGSize(width: 800, height: 20))
+			self.shape.fillColor = SKColor.orange
+		}
+		
+		super.init()
+	}
+	required init?(coder aDecoder: NSCoder) {
+		fatalError("Not implemented")
+	}
+	func asNode() -> SKNode {
+		return self.shape
+	}
+}
+
+class LabelComponent : GKComponent, ChildNode {
+	
+	let label : SKLabelNode
+	init(text: String) {
+		self.label = SKLabelNode(text: text)
+		super.init()
+	}
+	required init?(coder aDecoder: NSCoder) {
+		fatalError("Not implemented")
+	}
+	func asNode() -> SKNode {
+		return self.label
+	}
+}
+
+class SpriteComponent : GKComponent, ChildNode {
+	let sprite : SKSpriteNode
+	override init() {
+		sprite = SKSpriteNode(color: #colorLiteral(red: 0.854901969432831, green: 0.250980406999588, blue: 0.47843137383461, alpha: 1.0), size: CGSize(width: 100, height: 100))
+		super.init()
+	}
+	required init?(coder aDecoder: NSCoder) {
+		fatalError("Not implemented")
+	}
+	func asNode() -> SKNode {
+		return self.sprite
+	}
+}
+
+// SYSTEMS
 extension NodeComponent {
     // 2.
     override func update(deltaTime seconds: TimeInterval) {
@@ -100,68 +174,34 @@ extension NodeComponent {
 		}
     }
 }
-protocol ChildNode {
-    func asNode() -> SKNode
-}
-enum Shape {
-    case circle, square
-}
-class ShapeComponent : GKComponent, ChildNode {
-    let shape : SKShapeNode
-    // 2.
-    init( shape : Shape) {
-        switch shape {
-        case .circle:
-            self.shape = SKShapeNode(circleOfRadius: 20)
-        case .square:
-            self.shape = SKShapeNode(rect: CGRect(x: 0, y: 0, width: 20, height: 20))
-        }
-        // 3.
-        self.shape.fillColor = SKColor.purple
-        super.init()
-    }
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("Not implemented")
-    }
-    func asNode() -> SKNode {
-        return self.shape
-    }
+
+extension ContactComponent {
+	override func update(deltaTime seconds: TimeInterval) {
+		// 1.
+		for entity in targetEntities {
+			guard let body = entity.component(ofType: PhysicsComponent.self)?.body else {
+				continue
+			}
+			if body.categoryBitMask == PhysicsCategory.circle {
+				entity.component(ofType: 	NodeComponent.self)?.node.removeFromParent()
+			} else {
+				body.applyImpulse(CGVector(dx:10, dy: 25))
+			}
+		}
+		// 2.
+		targetEntities.removeAll()
+	}
 }
 
-class LabelComponent : GKComponent, ChildNode {
-    
-    let label : SKLabelNode
-    init(text: String) {
-        self.label = SKLabelNode(text: text)
-        super.init()
-    }
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("Not implemented")
-    }
-    func asNode() -> SKNode {
-        return self.label
-    }
+enum NodeType : CaseIterable {
+    case circle, square, label, sprite, floor
 }
 
-class SpriteComponent : GKComponent, ChildNode {
-    let sprite : SKSpriteNode
-    override init() {
-        sprite = SKSpriteNode(color: #colorLiteral(red: 0.854901969432831, green: 0.250980406999588, blue: 0.47843137383461, alpha: 1.0), size: CGSize(width: 100, height: 100))
-        super.init()
-    }
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("Not implemented")
-    }
-    func asNode() -> SKNode {
-        return self.sprite
-    }
-}
-
-enum NodeType {
-    case shape, label, sprite
-    static func allTypes() -> [NodeType] {
-        return [.shape, .label, sprite]
-    }
+struct PhysicsCategory  {
+	static let none : UInt32 = 0b1
+	static let circle : UInt32 = 0b1
+	static let floor : UInt32 = 0b100
+	static let square : UInt32 = 0b1000
 }
 
 class GameScene : SKScene {
@@ -169,10 +209,19 @@ class GameScene : SKScene {
     var previousTime : TimeInterval = 0
     var nodeTypes = [NodeType]()
     
-    lazy var systems : [GKComponentSystem] = {
-        let render = GKComponentSystem(componentClass: NodeComponent.self)
-        return [render]
-    }()
+lazy var systems : [GKComponentSystem] = {
+	let contact = GKComponentSystem(componentClass: ContactComponent.self)
+	let render = GKComponentSystem(componentClass: NodeComponent.self)
+	return [contact, render]
+}()
+	
+	override func didMove(to view: SKView) {
+		self.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+		self.addNode(.floor, at: CGPoint(x: 0, y: -(self.size.height / 2)))
+		self.physicsWorld.contactDelegate = self
+	}
+	
+	
     override func update(_ currentTime: TimeInterval) {
         if self.previousTime == 0 {
             self.previousTime = currentTime
@@ -183,14 +232,6 @@ class GameScene : SKScene {
             system.update(deltaTime: delta)
         }
 		self.previousTime = currentTime
-		
-		// BONUS: If there are ten entities, let's completely stop the physics
-		// by removing the component.
-		if self.entities.count == 10 {
-			for entity in entities {
-				entity.removeComponent(ofType: PhysicsComponent.self)
-			}
-		}
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -203,60 +244,73 @@ class GameScene : SKScene {
         
         // 2. 
         let loc = touch.location(in: self)
-        // 3.
-        self.addNode(at:loc)
+		if loc.y > 0 {
+			self.addNode(.circle, at:loc)
+		} else {
+			self.addNode(.square, at:loc)
+		}
+		
     }
     
-    func addNode(at point:CGPoint){
-		self.physicsWorld.gravity = .zero
-        let entity = GKEntity()
-        let nodeComponent = NodeComponent()
-        
-        if nodeTypes.isEmpty {
-            nodeTypes = NodeType.allTypes()
-        }
-        let type = nodeTypes.popLast()!
-        let typeComponent : GKComponent
-        switch type {
-        case .shape:
-            typeComponent = ShapeComponent(shape: .circle)
-            case .label:
-            typeComponent = LabelComponent(text: "Hello!")
-            case .sprite:
-            typeComponent = SpriteComponent()
-        }
-        if let typeComponent = typeComponent as? ChildNode {
-            nodeComponent.node.addChild(typeComponent.asNode())
-        }
-        let positionComponent = PositionComponent(pos: point)
-        let scaleComp = ScaleComponent()
-         entity.addComponent(scaleComp)
-        entity.addComponent(nodeComponent)
-        entity.addComponent(positionComponent)
-        scaleComp.targetScale = 1.5
-
-if type != .label {
-		let body = SKPhysicsBody(rectangleOf: nodeComponent.node.calculateAccumulatedFrame().size)
-		let physics = PhysicsComponent(body: body)
-entity.addComponent(physics)
-}
+	func addNode(_ type : NodeType, at point:CGPoint){
 		
-        self.entities.append(entity)
-        self.addChild(nodeComponent.node)
-        for system in systems {
-            system.addComponent(foundIn: entity)
-        }
-    }
-
-override func didSimulatePhysics() {
-	guard let hasEntity = self.entities.first else {
-		return
+		let entity = GKEntity()
+		let nodeComponent = NodeComponent()
+		let typeComponent : GKComponent
+		let body: SKPhysicsBody?
+		switch type {
+		case .floor:
+			typeComponent = ShapeComponent(shape: .floor)
+			body = SKPhysicsBody(rectangleOf: CGSize(width: 800, height: 20))
+			body?.isDynamic = false
+			body?.categoryBitMask = PhysicsCategory.floor
+			body?.contactTestBitMask = PhysicsCategory.circle | PhysicsCategory.square
+			
+			let contactComponent = ContactComponent()
+			entity.addComponent(contactComponent)
+		case .circle:
+			typeComponent = ShapeComponent(shape: .circle)
+			body = SKPhysicsBody(circleOfRadius: 20)
+			body?.categoryBitMask = PhysicsCategory.circle
+		case .square:
+			typeComponent = ShapeComponent(shape: .square)
+			body = SKPhysicsBody(rectangleOf: CGSize(width: 50, height: 50))
+			body?.categoryBitMask = PhysicsCategory.square
+		case .label:
+			typeComponent = LabelComponent(text: "Hello!")
+			body = nil
+		case .sprite:
+			typeComponent = SpriteComponent()
+			body = SKPhysicsBody(rectangleOf: CGSize(width: 100, height: 100))
+		}
+		if let typeComponent = typeComponent as? ChildNode {
+			nodeComponent.node.addChild(typeComponent.asNode())
+		}
+		let positionComponent = PositionComponent(pos: point)
+		let scaleComp = ScaleComponent()
+		entity.addComponent(scaleComp)
+		entity.addComponent(nodeComponent)
+		entity.addComponent(positionComponent)
+		
+		
+		if let hasBody = body {
+			let physics = PhysicsComponent(body: hasBody)
+			entity.addComponent(physics)
+		}
+		
+		self.entities.append(entity)
+		self.addChild(nodeComponent.node)
+		for system in systems {
+			system.addComponent(foundIn: entity)
+		}
 	}
-//	print("---PHYSICS APPLIED---")
-//	print( hasEntity.component(ofType: PositionComponent.self)?.currentPosition ?? "No position")
-//	print( hasEntity.component(ofType: NodeComponent.self)?.node.position ?? "No node")
-//	print( hasEntity.component(ofType: PhysicsComponent.self)?.body?.velocity ??  "No velocity")
 }
+
+extension GameScene : SKPhysicsContactDelegate {
+	func didBegin(_ contact: SKPhysicsContact) {
+		contact.bodyA.node?.entity?.component(ofType: ContactComponent.self)?.didMakeContact(with: contact.bodyB.node?.entity)
+		contact.bodyB.node?.entity?.component(ofType: ContactComponent.self)?.didMakeContact(with: contact.bodyA.node?.entity)
+	}
 }
 
 class TouchyNode : SKNode {
@@ -295,5 +349,7 @@ class TouchyNode : SKNode {
 let view = SKView(frame: CGRect(x: 0, y: 0, width: 400, height: 500))
 let scene = GameScene(size: view.frame.size)
 scene.scaleMode = .aspectFit
+view.showsFPS = true
+view.showsPhysics = true
 view.presentScene(scene)
 PlaygroundPage.current.liveView = view
